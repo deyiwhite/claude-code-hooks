@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 settings.json
 settings.local.json
+node_modules/
+package.json
+package-lock.json
+*.log
