@@ -178,17 +178,15 @@ def main():
     try:
         raw = sys.stdin.buffer.read()
         if not raw:
-            os.write(1, b'{"continue": true}\n')
-            return
+            sys.exit(0)
         data = json.loads(raw.decode())
     except Exception:
-        os.write(1, b'{"continue": true}\n')
-        return
+        sys.exit(0)
     try:
         show(data)
     except Exception:
         pass
-    os.write(1, b'{"continue": true}\n')
+    sys.exit(0)
 
 
 if __name__ == '__main__':

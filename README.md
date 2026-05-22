@@ -6,7 +6,7 @@ Windows 桌面弹窗式权限确认 + 空闲提醒，替代 Claude Code 默认�
 
 | 脚本 | 触发时机 | 效果 |
 |------|---------|------|
-| `permission_dialog.py` | Bash 操作前 | 弹窗确认（同意/拒绝/记住），28 秒超时 |
+| `permission_dialog.py` | Bash 操作前 | 弹窗确认（同意/拒绝/记住），20min 超时 |
 | `edit_notify.py` | Edit / Write / MultiEdit / NotebookEdit 操作前 | 轻量提醒弹窗，10 秒自动关闭，退回终端确认 |
 | `idle_notify.py` | Claude Code 任务完成进入空闲 | 弹窗提醒，10 秒后自动关闭 |
 

@@ -26,9 +26,8 @@ MONO = 'Consolas'
 
 
 def _center(root, w, h):
-    sw = root.winfo_screenwidth()
-    sh = root.winfo_screenheight()
-    root.geometry(f'{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}')
+    root.geometry(f'{w}x{h}')
+    root.eval('tk::PlaceWindow . center')
 
 
 def _focus(root, btn):

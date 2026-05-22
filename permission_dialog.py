@@ -68,23 +68,17 @@ def _remember(tool_name, tool_input):
         # Multi-line scripts and long commands would produce invalid JSON rules.
         if cmd and '\n' not in cmd and len(cmd) <= 80:
             rule = f'{tool_name}({cmd})'
-    # Write to the current project's .claude/settings.local.json,
-    # not the hooks project's config. Falls back to global if cwd has no .claude.
+    # Write to the current project's .claude/settings.local.json only.
     project_config = os.path.join(os.getcwd(), '.claude', 'settings.local.json')
-    global_config = os.path.join(os.path.expanduser('~'), '.claude', 'settings.local.json')
-    targets = [project_config]
-    if project_config != global_config:
-        targets.append(global_config)
-    for p in targets:
-        try:
-            s = json.load(open(p, 'r', encoding='utf-8')) if os.path.exists(p) else {}
-            s.setdefault('permissions', {}).setdefault('allow', [])
-            if rule not in s['permissions']['allow']:
-                s['permissions']['allow'].append(rule)
-            os.makedirs(os.path.dirname(p), exist_ok=True)
-            json.dump(s, open(p, 'w', encoding='utf-8'), indent=2, ensure_ascii=False)
-        except Exception:
-            pass
+    try:
+        s = json.load(open(project_config, 'r', encoding='utf-8')) if os.path.exists(project_config) else {}
+        s.setdefault('permissions', {}).setdefault('allow', [])
+        if rule not in s['permissions']['allow']:
+            s['permissions']['allow'].append(rule)
+        os.makedirs(os.path.dirname(project_config), exist_ok=True)
+        json.dump(s, open(project_config, 'w', encoding='utf-8'), indent=2, ensure_ascii=False)
+    except Exception:
+        pass
 
 
 def show(data):
@@ -251,6 +245,7 @@ def show(data):
         root.destroy()
     except Exception:
         pass
+    sys.exit(0)
 
 
 def main():
