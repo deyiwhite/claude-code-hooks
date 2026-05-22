@@ -3,8 +3,6 @@
 
 import sys, os, json, tkinter as tk
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-CLAUDE_DIR = os.path.dirname(SCRIPT_DIR)
 
 if sys.platform == 'win32':
     try:
@@ -68,8 +66,14 @@ def _remember(tool_name, tool_input):
         # Multi-line scripts and long commands would produce invalid JSON rules.
         if cmd and '\n' not in cmd and len(cmd) <= 80:
             rule = f'{tool_name}({cmd})'
-    for p in (os.path.join(CLAUDE_DIR, 'settings.json'),
-              os.path.join(CLAUDE_DIR, 'settings.local.json')):
+    # Write to the current project's .claude/settings.local.json,
+    # not the hooks project's config. Falls back to global if cwd has no .claude.
+    project_config = os.path.join(os.getcwd(), '.claude', 'settings.local.json')
+    global_config = os.path.join(os.path.expanduser('~'), '.claude', 'settings.local.json')
+    targets = [project_config]
+    if project_config != global_config:
+        targets.append(global_config)
+    for p in targets:
         try:
             s = json.load(open(p, 'r', encoding='utf-8')) if os.path.exists(p) else {}
             s.setdefault('permissions', {}).setdefault('allow', [])
