@@ -44,10 +44,12 @@ def _focus(root, btn):
     btn.focus_set()
 
 
+SKIP_KEYS = {'description', 'timeout'}
+
 def _detail(tool_input):
     lines = []
     for k, v in tool_input.items():
-        if k == 'description':
+        if k in SKIP_KEYS:
             continue
         if isinstance(v, str):
             lines.append(f'{k}: {v}')
@@ -180,43 +182,6 @@ def show(data):
             sb.pack(side='right', fill='y')
             box.configure(yscrollcommand=sb.set)
 
-    # ── 倒计时条 ─────────────────────────────────────────────────────────────
-    timer_frame = tk.Frame(root, bg=BG)
-    timer_frame.pack(fill='x', padx=16, pady=(6, 0))
-
-    track = tk.Canvas(timer_frame, height=3, bg='#ead8f8',
-                      highlightthickness=0)
-    track.pack(fill='x', side='left', expand=True)
-    timer_lbl = tk.Label(timer_frame, text='28s',
-                         bg=BG, fg='#c4b5fd',
-                         font=(MONO, 9))
-    timer_lbl.pack(side='right', padx=(8, 0))
-
-    TIMEOUT = 28
-    remaining = [TIMEOUT]
-
-    def _draw_bar(event=None):
-        track.delete('all')
-        w = track.winfo_width() or 400
-        ratio = remaining[0] / TIMEOUT
-        if ratio > 0:
-            track.create_rectangle(0, 0, int(w * ratio), 3,
-                                   fill='#c4b5fd', outline='')
-    track.bind('<Configure>', _draw_bar)
-
-    def _tick():
-        if not root.winfo_exists():
-            return
-        remaining[0] -= 1
-        timer_lbl.config(text=f'{remaining[0]}s')
-        _draw_bar()
-        if remaining[0] <= 0:
-            root.quit()
-        else:
-            root.after(1000, _tick)
-
-    root.after(1000, _tick)
-
     # ── 按钮区 ───────────────────────────────────────────────────────────────
     bf = tk.Frame(root, bg=BG)
     bf.pack(fill='x', padx=16, pady=(6, 8))
@@ -270,7 +235,7 @@ def show(data):
 
     # ── 快捷键 ────────────────────────────────────────────────────────────────
     root.bind('<Return>', lambda e: act(True, True))
-    root.protocol('WM_DELETE_WINDOW', root.quit)
+    root.protocol('WM_DELETE_WINDOW', lambda: act(False))
 
     # ── 计算窗口尺寸 ──────────────────────────────────────────────────────────
     root.update_idletasks()
@@ -292,16 +257,14 @@ def main():
     try:
         raw = sys.stdin.buffer.read()
         if not raw:
-            os.write(1, b'{"continue": true}\n')
-            return
+            return  # no stdin data — let Claude Code decide
         data = json.loads(raw.decode())
     except Exception:
-        os.write(1, b'{"continue": true}\n')
-        return
+        return  # parse error — let Claude Code decide
     try:
         show(data)
     except Exception:
-        os.write(1, b'{"continue": true}\n')
+        pass  # dialog crashed — let Claude Code decide
 
 
 if __name__ == '__main__':
