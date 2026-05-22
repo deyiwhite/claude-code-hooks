@@ -61,8 +61,13 @@ def _detail(tool_input):
 
 
 def _remember(tool_name, tool_input):
-    cmd = tool_input.get('command', '*') if tool_name == 'Bash' else '*'
-    rule = f'{tool_name}({cmd})' if tool_name == 'Bash' else f'{tool_name}(*)'
+    rule = f'{tool_name}(*)'
+    if tool_name == 'Bash':
+        cmd = tool_input.get('command', '')
+        # Only embed the command if it's a clean single-line, short command.
+        # Multi-line scripts and long commands would produce invalid JSON rules.
+        if cmd and '\n' not in cmd and len(cmd) <= 80:
+            rule = f'{tool_name}({cmd})'
     for p in (os.path.join(CLAUDE_DIR, 'settings.json'),
               os.path.join(CLAUDE_DIR, 'settings.local.json')):
         try:
