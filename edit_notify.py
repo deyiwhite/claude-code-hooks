@@ -1,36 +1,49 @@
 #!/usr/bin/env python3
-"""Claude Code PreToolUse hook - lightweight notification for Edit/Write."""
+"""Claude Code PreToolUse hook - lightweight notification for file edits."""
 
-import sys, os, json, tkinter as tk
+import json
+import os
+import sys
+import tkinter as tk
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-if sys.platform == 'win32':
+def _enable_windows_polish():
+    if sys.platform != 'win32':
+        return
     try:
         import ctypes
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:
+            ctypes.windll.user32.SetProcessDPIAware()
         ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
     except Exception:
         pass
 
-BG      = '#faf7ff'
-CARD    = '#f5eeff'
-BD      = '#ddd0f0'
-TEXT    = '#3d2460'
-SUB     = '#6b4f8a'
-DIM     = '#b098c8'
-ACC     = '#9c6cd4'
-BLUE    = '#93c5fd'
-GREEN   = '#a7f3d0'
-YELLOW  = '#fde68a'
 
-UI   = 'Segoe UI'
+_enable_windows_polish()
+
+BG      = '#faf7ff'
+CARD    = '#fdfaff'
+BD      = '#d8c4ea'
+TEXT    = '#3f255f'
+SUB     = '#705087'
+DIM     = '#9e85b8'
+ACC     = '#c084d4'
+ACC_HV  = '#ad70c0'
+BLUE    = '#a5b4fc'
+GREEN   = '#93c5fd'
+YELLOW  = '#f4d77d'
+PINK    = '#f0abfc'
+
+UI   = 'Microsoft YaHei UI'
 MONO = 'Consolas'
 
 COLORS_MAP = {
-    'Edit':          BLUE,
-    'MultiEdit':     BLUE,
-    'Write':         GREEN,
-    'NotebookEdit':  YELLOW,
+    'Edit': BLUE,
+    'MultiEdit': BLUE,
+    'Write': GREEN,
+    'NotebookEdit': BLUE,
 }
 
 
@@ -47,6 +60,59 @@ def _focus(root, btn):
     btn.focus_set()
 
 
+def _fade_in(root, alpha=0.0):
+    try:
+        root.attributes('-alpha', alpha)
+        if alpha < 1.0:
+            root.after(12, lambda: _fade_in(root, min(alpha + 0.14, 1.0)))
+    except Exception:
+        pass
+
+
+def _show_smooth(root, focus_widget):
+    try:
+        root.attributes('-alpha', 0.0)
+    except Exception:
+        pass
+    root.deiconify()
+    _focus(root, focus_widget)
+    _fade_in(root)
+
+
+def _accent_bar(parent):
+    bar = tk.Canvas(parent, height=4, bg=CARD, highlightthickness=0)
+    bar.pack(fill='x')
+    colors = ['#f9a8d4', '#f0abfc', '#d8b4fe', '#c4b5fd', '#fbcfe8']
+
+    def hex_to_rgb(value):
+        value = value.lstrip('#')
+        return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+
+    def mix(a, b, t):
+        return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
+    def draw(event=None):
+        bar.delete('all')
+        w = bar.winfo_width() or 330
+        stops = [hex_to_rgb(c) for c in colors]
+        steps = max(1, min(w, 180))
+        for i in range(steps):
+            pos = i / max(steps - 1, 1) * (len(stops) - 1)
+            idx = min(int(pos), len(stops) - 2)
+            color = mix(stops[idx], stops[idx + 1], pos - idx)
+            x1 = int(i * w / steps)
+            x2 = int((i + 1) * w / steps) + 1
+            bar.create_rectangle(x1, 0, x2, 4, fill=f'#{color[0]:02x}{color[1]:02x}{color[2]:02x}', outline='')
+
+    bar.bind('<Configure>', draw)
+
+
+def _short_path(path, max_len=72):
+    if len(path) <= max_len:
+        return path
+    return '...' + path[-(max_len - 3):]
+
+
 def show(data):
     tool_name = data.get('tool_name', 'Edit')
     tool_input = data.get('tool_input', {})
@@ -58,104 +124,94 @@ def show(data):
             tool_input = {}
 
     desc = tool_input.get('description', '')
-    file_path = tool_input.get('file_path', '')
+    file_path = tool_input.get('file_path') or tool_input.get('path') or ''
     badge_color = COLORS_MAP.get(tool_name, ACC)
 
     root = tk.Tk()
+    root.withdraw()
     root.title('Claude Code')
     root.resizable(False, False)
     root.configure(bg=CARD)
 
-    # ── 彩虹条 ──────────────────────────────────────────────────
-    rainbow = tk.Canvas(root, height=3, bg=CARD, highlightthickness=0)
-    rainbow.pack(fill='x')
-    seg_colors = ['#fda4af','#fdba74','#fde68a','#a7f3d0','#93c5fd','#c4b5fd','#f9a8d4']
-    def _draw_r(event=None):
-        rainbow.delete('all')
-        w = rainbow.winfo_width() or 310
-        seg = w / len(seg_colors)
-        for i, c in enumerate(seg_colors):
-            rainbow.create_rectangle(i*seg, 0, (i+1)*seg, 3, fill=c, outline='')
-    rainbow.bind('<Configure>', _draw_r)
+    _accent_bar(root)
 
-    # ── 标题 ────────────────────────────────────────────────────
-    head = tk.Frame(root, bg=CARD)
-    head.pack(fill='x', padx=12, pady=(10, 0))
+    wrap = tk.Frame(root, bg=CARD, padx=18, pady=14)
+    wrap.pack(fill='both', expand=True)
 
-    tk.Label(head, text=f' {tool_name} ',
+    head = tk.Frame(wrap, bg=CARD)
+    head.pack(fill='x')
+    tk.Label(head, text=tool_name,
              bg=badge_color, fg='#ffffff',
-             font=(UI, 11, 'bold'),
-             padx=10, pady=3).pack(side='left')
+             font=(MONO, 9, 'bold'),
+             padx=8, pady=3).pack(side='left')
+    tk.Label(head, text='  即将修改',
+             bg=CARD, fg=TEXT, font=(UI, 11, 'bold')).pack(side='left')
 
-    tk.Label(head, text=' 即将修改',
-             bg=CARD, fg=TEXT,
-             font=(UI, 11, 'bold')).pack(side='left', pady=2)
+    tk.Frame(wrap, bg=BD, height=1).pack(fill='x', pady=(10, 9))
 
-    # ── 分割线 ──────────────────────────────────────────────────
-    tk.Frame(root, bg=BD, height=1).pack(fill='x', padx=12, pady=(5, 6))
-
-    # ── 文件名 ──────────────────────────────────────────────────
     if file_path:
-        name = os.path.basename(file_path)
+        info = tk.Frame(wrap, bg='#f8f1ff', highlightbackground=BD, highlightthickness=1)
+        info.pack(fill='x')
+        tk.Label(info, text=os.path.basename(file_path),
+                 bg='#f8f1ff', fg=TEXT, font=(UI, 10, 'bold'),
+                 padx=10, pady=7,
+                 anchor='w').pack(fill='x')
         dirn = os.path.dirname(file_path)
-        tk.Label(root, text=f'\U0001f4c4 {name}',
-                 bg=CARD, fg=TEXT,
-                 font=(UI, 10, 'bold')).pack(padx=12, anchor='w')
         if dirn:
-            tk.Label(root, text=dirn,
-                     bg=CARD, fg=DIM,
-                     font=(MONO, 7)).pack(padx=12, anchor='w')
+            tk.Label(info, text=_short_path(dirn),
+                     bg='#f8f1ff', fg=DIM, font=(MONO, 8),
+                     padx=10, pady=0,
+                     anchor='w').pack(fill='x', pady=(0, 7))
 
-    # ── 描述 ────────────────────────────────────────────────────
     if desc:
-        tk.Frame(root, bg=CARD, height=4).pack()
-        desc_lbl = tk.Label(root, text=desc,
-                 bg=CARD, fg=SUB,
-                 font=(UI, 9),
-                 justify='left')
-        desc_lbl.pack(padx=12, anchor='w', fill='x')
+        outer = tk.Frame(wrap, bg=badge_color, highlightbackground=BD, highlightthickness=1)
+        outer.pack(fill='x', pady=(9, 0))
+        desc_f = tk.Frame(outer, bg='#f8f1ff')
+        desc_f.pack(fill='both', expand=True, padx=(4, 0))
+        desc_lbl = tk.Label(desc_f, text=desc,
+                            bg='#f8f1ff', fg=SUB,
+                            font=(UI, 9), justify='left',
+                            padx=10, pady=7, anchor='w',
+                            wraplength=330)
+        desc_lbl.pack(fill='x')
 
-        def _adj_wrap():
-            w = root.winfo_width()
+        def adj_wrap():
+            w = desc_f.winfo_width()
             if w > 24:
                 desc_lbl.configure(wraplength=w - 24)
-        root.after(10, _adj_wrap)
 
-    # ── 按钮 ────────────────────────────────────────────────────
-    tk.Frame(root, bg=CARD, height=10).pack()
+        root.after(10, adj_wrap)
 
-    remaining = [10]
+    footer = tk.Frame(wrap, bg=CARD)
+    footer.pack(fill='x', pady=(12, 0))
+
+    countdown_var = tk.StringVar(value='10s 后自动关闭')
+    tk.Label(footer, textvariable=countdown_var, bg=CARD, fg=DIM,
+             font=(UI, 8)).pack(side='left')
 
     def close():
         root.quit()
 
-    def _tick():
+    btn = tk.Button(footer, text='知道了', command=close,
+                    bg=CARD, fg=ACC, font=(UI, 9),
+                    activebackground='#f3e8ff', activeforeground=ACC_HV,
+                    relief='flat', padx=16, pady=3, cursor='hand2',
+                    bd=0, highlightthickness=1, highlightbackground=BD)
+    btn.pack(side='right')
+
+    remaining = [10]
+
+    def tick():
         if not root.winfo_exists():
             return
         remaining[0] -= 1
         if remaining[0] <= 0:
-            root.quit()
+            close()
         else:
             countdown_var.set(f'{remaining[0]}s 后自动关闭')
-            root.after(1000, _tick)
-    root.after(1000, _tick)
+            root.after(1000, tick)
 
-    btn = tk.Button(root, text='知道了', command=close,
-                    bg=CARD, fg=ACC,
-                    font=(UI, 9),
-                    activebackground='#ede0f8', activeforeground=ACC,
-                    relief='flat', padx=16, pady=2,
-                    cursor='hand2', bd=0,
-                    highlightthickness=1, highlightbackground=BD)
-    btn.pack()
-
-    # ── 倒计时 ──────────────────────────────────────────────────
-    tk.Frame(root, bg=CARD, height=3).pack()
-    countdown_var = tk.StringVar(value='10s 后自动关闭')
-    tk.Label(root, textvariable=countdown_var, bg=CARD, fg=DIM,
-             font=(UI, 8)).pack()
-    tk.Frame(root, bg=CARD, height=4).pack()
-
+    root.after(1000, tick)
     root.bind('<Return>', lambda e: close())
     root.protocol('WM_DELETE_WINDOW', close)
 
@@ -164,9 +220,9 @@ def show(data):
     h = root.winfo_reqheight()
     max_w = int(root.winfo_screenwidth() * 0.6)
     max_h = int(root.winfo_screenheight() * 0.35)
-    _center(root, min(max(w, 310), max_w), min(h, max_h))
+    _center(root, min(max(w, 360), max_w), min(h, max_h))
 
-    _focus(root, btn)
+    _show_smooth(root, btn)
     root.mainloop()
     try:
         root.destroy()
@@ -179,7 +235,7 @@ def main():
         raw = sys.stdin.buffer.read()
         if not raw:
             sys.exit(0)
-        data = json.loads(raw.decode())
+        data = json.loads(raw.decode('utf-8'))
     except Exception:
         sys.exit(0)
     try:

@@ -1,16 +1,26 @@
 #!/usr/bin/env python3
 """Claude Code Notification hook - idle prompt popup."""
 
-import sys, os, tkinter as tk
+import os
+import sys
+import tkinter as tk
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-if sys.platform == 'win32':
+def _enable_windows_polish():
+    if sys.platform != 'win32':
+        return
     try:
         import ctypes
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:
+            ctypes.windll.user32.SetProcessDPIAware()
         ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
     except Exception:
         pass
+
+
+_enable_windows_polish()
 
 BG   = '#ede5f5'
 CARD = '#fdfaff'
@@ -18,10 +28,10 @@ TEXT = '#4a2e6a'
 SUB  = '#7a5490'
 ACC  = '#c084d4'
 ACC2 = '#ad70c0'
-BD   = '#cdbde0'
-DIV  = '#dccde8'
+BD   = '#d8c4ea'
+DIV  = '#eadcf3'
 
-FONT = 'Segoe UI'
+FONT = 'Microsoft YaHei UI'
 MONO = 'Consolas'
 
 
@@ -38,57 +48,88 @@ def _focus(root, btn):
     btn.focus_set()
 
 
+def _fade_in(root, alpha=0.0):
+    try:
+        root.attributes('-alpha', alpha)
+        if alpha < 1.0:
+            root.after(12, lambda: _fade_in(root, min(alpha + 0.12, 1.0)))
+    except Exception:
+        pass
+
+
+def _show_smooth(root, focus_widget):
+    try:
+        root.attributes('-alpha', 0.0)
+    except Exception:
+        pass
+    root.deiconify()
+    _focus(root, focus_widget)
+    _fade_in(root)
+
+
+def _accent_bar(parent):
+    bar = tk.Canvas(parent, height=4, bg=CARD, highlightthickness=0)
+    bar.pack(fill='x')
+    colors = ['#f9a8d4', '#f0abfc', '#d8b4fe', '#c4b5fd', '#fbcfe8']
+
+    def hex_to_rgb(value):
+        value = value.lstrip('#')
+        return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+
+    def mix(a, b, t):
+        return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
+    def draw(event=None):
+        bar.delete('all')
+        w = bar.winfo_width() or 340
+        stops = [hex_to_rgb(c) for c in colors]
+        steps = max(1, min(w, 180))
+        for i in range(steps):
+            pos = i / max(steps - 1, 1) * (len(stops) - 1)
+            idx = min(int(pos), len(stops) - 2)
+            color = mix(stops[idx], stops[idx + 1], pos - idx)
+            x1 = int(i * w / steps)
+            x2 = int((i + 1) * w / steps) + 1
+            bar.create_rectangle(x1, 0, x2, 4, fill=f'#{color[0]:02x}{color[1]:02x}{color[2]:02x}', outline='')
+
+    bar.bind('<Configure>', draw)
+
+
 def show_dialog():
     root = tk.Tk()
+    root.withdraw()
     root.title('Claude Code')
     root.resizable(False, False)
     root.configure(bg=CARD)
 
-    # 顶部彩虹条
-    rainbow = tk.Canvas(root, height=3, bg=CARD, highlightthickness=0)
-    rainbow.pack(fill='x')
-    colors = ['#fda4af','#fdba74','#fde68a','#a7f3d0','#93c5fd','#c4b5fd','#f9a8d4']
-    def _draw(event=None):
-        rainbow.delete('all')
-        w = rainbow.winfo_width() or 340
-        seg = w / len(colors)
-        for i, c in enumerate(colors):
-            rainbow.create_rectangle(i*seg, 0, (i+1)*seg, 3, fill=c, outline='')
-    rainbow.bind('<Configure>', _draw)
+    _accent_bar(root)
 
-    # 颜文字
-    tk.Label(root, text='\u2661(\u02c3\u0348 \u03b5 \u02c2\u0348 )', bg=CARD,
-             font=(FONT, 14)).pack(pady=(18, 0))
+    tk.Label(root, text='♡(˃͈ ε ˂͈ )', bg=CARD, fg=ACC,
+             font=(FONT, 15)).pack(pady=(24, 0))
 
-    # 标题
-    tk.Label(root, text='Claude', bg=CARD, fg=TEXT,
-             font=(MONO, 13, 'bold')).pack(pady=(6, 0))
+    tk.Frame(root, bg=DIV, height=1).pack(fill='x', padx=30, pady=(16, 16))
 
-    tk.Frame(root, bg=DIV, height=1).pack(fill='x', padx=30, pady=(10, 12))
-
-    # 消息
     tk.Label(root, text='任务已完成，等待新指令', bg=CARD, fg=SUB,
              font=(FONT, 11, 'bold')).pack()
 
-    tk.Frame(root, bg=CARD, height=10).pack()
+    tk.Frame(root, bg=CARD, height=18).pack()
 
     def close():
         root.quit()
 
     btn = tk.Button(root, text='知道啦', command=close,
-                    bg=ACC, fg='#fff', font=(FONT, 11, 'bold'),
-                    activebackground=ACC2, activeforeground='#fff',
+                    bg=ACC, fg='#ffffff', font=(FONT, 11, 'bold'),
+                    activebackground=ACC2, activeforeground='#ffffff',
                     relief='flat', padx=28, pady=7, cursor='hand2', bd=0)
     btn.pack()
 
-    # 倒计时
-    tk.Frame(root, bg=CARD, height=6).pack()
     countdown_var = tk.StringVar(value='10s 后自动关闭')
-    tk.Label(root, textvariable=countdown_var, bg=CARD, fg='#c4b5fd',
-             font=(FONT, 8)).pack()
+    tk.Label(root, textvariable=countdown_var, bg=CARD, fg=BD,
+             font=(FONT, 8)).pack(pady=(8, 18))
 
     remaining = [10]
-    def _tick():
+
+    def tick():
         if not root.winfo_exists():
             return
         remaining[0] -= 1
@@ -96,14 +137,14 @@ def show_dialog():
             close()
         else:
             countdown_var.set(f'{remaining[0]}s 后自动关闭')
-            root.after(1000, _tick)
-    root.after(1000, _tick)
+            root.after(1000, tick)
 
-    _focus(root, btn)
+    root.after(1000, tick)
     root.bind('<Return>', lambda e: close())
     root.protocol('WM_DELETE_WINDOW', close)
 
-    _center(root, 340, 225)
+    _center(root, 340, 226)
+    _show_smooth(root, btn)
 
     root.mainloop()
     try:

@@ -20,8 +20,8 @@ Bash 命令执行前弹出确认窗口。
 
 | 操作 | 效果 |
 |------|------|
-| 点「同意」| 批准本次操作（仅此一次，下次还会弹） |
-| 点「记住」（**按 Enter**） | **= 记住并同意**，记住此工具并批准，以后同类操作不再询（**最省事，推荐）** |
+| 点「同意」/ 按 Enter | 批准本次操作（仅此一次，下次还会弹） |
+| 点「记住」 | 记住此工具并批准，会写入当前项目的 `.claude/settings.local.json`，以后同类操作不再询 |
 | 点「拒绝」/关闭窗口 | 阻止本次操作 |
 | 20min超时 | 阻止本次操作 |
 
@@ -31,7 +31,7 @@ Bash 命令执行前弹出确认窗口。
 
 Edit / Write / MultiEdit / NotebookEdit 操作前弹出轻量提醒，**不做拦截**，关闭后退回终端确认。
 
-![edit-notify](screenshots/write1.png)
+![edit](screenshots/edit.png)
 
 | 操作 | 效果 |
 |------|------|
@@ -117,7 +117,7 @@ C:\Users\<用户名>\.claude\
         ]
       },
       {
-        "matcher": "Edit|MultiEdit|Write|NotebookEdit",
+        "matcher": "Edit|MultiEdit|Write|Overwrite|NotebookEdit",
         "hooks": [
           {
             "type": "command",

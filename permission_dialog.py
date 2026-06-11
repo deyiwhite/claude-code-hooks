@@ -1,34 +1,46 @@
 #!/usr/bin/env python3
 """Claude Code PreToolUse hook - permission dialog."""
 
-import sys, os, json, tkinter as tk
+import json
+import os
+import sys
+import tkinter as tk
 
 
-if sys.platform == 'win32':
+def _enable_windows_polish():
+    if sys.platform != 'win32':
+        return
     try:
         import ctypes
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:
+            ctypes.windll.user32.SetProcessDPIAware()
         ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
     except Exception:
         pass
 
-# ── 配色 ────────────────────────────────────────────────────────────────────
+
+_enable_windows_polish()
+
 BG      = '#faf7ff'
-CARD_BG = '#f5eeff'
-CARD_BD = '#ddd0f0'
-CODE_BG = '#f0eaf8'
-CODE_BD = '#d5c5e0'
-DIV     = '#e8d8f0'
-TEXT    = '#3d2460'
-SUB     = '#6b4f8a'
-CODE_FG = '#4a3070'
-ACC     = '#9c6cd4'
+CARD_BG = '#f7f0ff'
+CARD_BD = '#d8c4ea'
+CODE_BG = '#f2ebfa'
+CODE_BD = '#d9c6e8'
+DIV     = '#eadcf3'
+TEXT    = '#3f255f'
+SUB     = '#6e4f87'
+CODE_FG = '#4b3170'
+ACC     = '#c084d4'
+ACC_HV  = '#ad70c0'
 DEN     = '#c2788a'
 DEN_HV  = '#b0687a'
-MEM_HV  = '#8a5dc0'
 
-# ── 字体 ─────────────────────────────────────────────────────────────────────
-UI   = 'Segoe UI'
+UI   = 'Microsoft YaHei UI'
 MONO = 'Consolas'
+
+SKIP_KEYS = {'description', 'timeout'}
 
 
 def _center(root, w, h):
@@ -44,7 +56,27 @@ def _focus(root, btn):
     btn.focus_set()
 
 
-SKIP_KEYS = {'description', 'timeout'}
+def _fade_in(root, alpha=0.0):
+    try:
+        root.attributes('-alpha', alpha)
+        if alpha < 1.0:
+            root.after(12, lambda: _fade_in(root, min(alpha + 0.12, 1.0)))
+    except Exception:
+        pass
+
+
+def _show_smooth(root, focus_widget):
+    try:
+        root.attributes('-alpha', 1.0)
+    except Exception:
+        pass
+    root.deiconify()
+    _focus(root, focus_widget)
+    try:
+        root.attributes('-alpha', 1.0)
+    except Exception:
+        pass
+
 
 def _detail(tool_input):
     lines = []
@@ -60,15 +92,27 @@ def _detail(tool_input):
     return '\n'.join(lines)
 
 
+def _detail_cols(detail):
+    lines = detail.splitlines() or ['']
+    longest = max(len(line) for line in lines)
+    if longest <= 36:
+        return 44
+    if longest <= 58:
+        return 56
+    if longest <= 76:
+        return min(longest + 2, 64)
+    if longest <= 98:
+        return 66
+    return 74
+
+
 def _remember(tool_name, tool_input):
     rule = f'{tool_name}(*)'
     if tool_name == 'Bash':
         cmd = tool_input.get('command', '')
-        # Only embed the command if it's a clean single-line, short command.
-        # Multi-line scripts and long commands would produce invalid JSON rules.
         if cmd and '\n' not in cmd and len(cmd) <= 80:
             rule = f'{tool_name}({cmd})'
-    # Write to the current project's .claude/settings.local.json only.
+
     project_config = os.path.join(os.getcwd(), '.claude', 'settings.local.json')
     try:
         s = json.load(open(project_config, 'r', encoding='utf-8')) if os.path.exists(project_config) else {}
@@ -76,9 +120,38 @@ def _remember(tool_name, tool_input):
         if rule not in s['permissions']['allow']:
             s['permissions']['allow'].append(rule)
         os.makedirs(os.path.dirname(project_config), exist_ok=True)
-        json.dump(s, open(project_config, 'w', encoding='utf-8'), indent=2, ensure_ascii=False)
+        with open(project_config, 'w', encoding='utf-8') as f:
+            json.dump(s, f, indent=2, ensure_ascii=False)
     except Exception:
         pass
+
+
+def _accent_bar(parent):
+    bar = tk.Canvas(parent, height=4, bg=BG, highlightthickness=0)
+    bar.pack(fill='x')
+    colors = ['#f9a8d4', '#f0abfc', '#d8b4fe', '#c4b5fd', '#fbcfe8']
+
+    def hex_to_rgb(value):
+        value = value.lstrip('#')
+        return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+
+    def mix(a, b, t):
+        return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
+    def draw(event=None):
+        bar.delete('all')
+        w = bar.winfo_width() or 460
+        stops = [hex_to_rgb(c) for c in colors]
+        steps = max(1, min(w, 180))
+        for i in range(steps):
+            pos = i / max(steps - 1, 1) * (len(stops) - 1)
+            idx = min(int(pos), len(stops) - 2)
+            color = mix(stops[idx], stops[idx + 1], pos - idx)
+            x1 = int(i * w / steps)
+            x2 = int((i + 1) * w / steps) + 1
+            bar.create_rectangle(x1, 0, x2, 4, fill=f'#{color[0]:02x}{color[1]:02x}{color[2]:02x}', outline='')
+
+    bar.bind('<Configure>', draw)
 
 
 def show(data):
@@ -93,94 +166,72 @@ def show(data):
 
     desc = tool_input.get('description', '')
     detail = _detail(tool_input)
-
     done = {'ok': False}
 
     root = tk.Tk()
+    root.withdraw()
     root.title('Claude Code')
     root.resizable(False, False)
     root.configure(bg=BG)
 
-    # ── 顶部彩虹条 ──────────────────────────────────────────────────────────
-    rainbow = tk.Canvas(root, height=3, bg=BG, highlightthickness=0)
-    rainbow.pack(fill='x')
-    colors = ['#fda4af', '#fdba74', '#fde68a', '#a7f3d0', '#93c5fd', '#c4b5fd', '#f9a8d4']
-    def _draw_rainbow(event=None):
-        rainbow.delete('all')
-        w = rainbow.winfo_width() or 460
-        seg = w / len(colors)
-        for i, c in enumerate(colors):
-            rainbow.create_rectangle(i * seg, 0, (i + 1) * seg, 3, fill=c, outline='')
-    rainbow.bind('<Configure>', _draw_rainbow)
+    _accent_bar(root)
 
-    # ── 标题栏 ───────────────────────────────────────────────────────────────
     head = tk.Frame(root, bg=BG)
-    head.pack(fill='x', padx=16, pady=(10, 0))
-
-    badge = tk.Label(head, text=f' {tool_name} ',
-                     bg=ACC, fg='#ffffff',
-                     font=(UI, 9, 'bold'),
-                     padx=6, pady=2)
-    badge.pack(side='left')
-
+    head.pack(fill='x', padx=16, pady=(14, 0))
+    tk.Label(head, text=tool_name,
+             bg=ACC, fg='#ffffff',
+             font=(UI, 10, 'bold'),
+             padx=9, pady=4).pack(side='left')
     tk.Label(head, text='  请求执行操作',
-             bg=BG, fg=TEXT,
-             font=(UI, 11, 'bold')).pack(side='left', pady=2)
+             bg=BG, fg=TEXT, font=(UI, 11, 'bold')).pack(side='left', pady=2)
 
-    tk.Frame(root, bg=DIV, height=1).pack(fill='x', padx=16, pady=(6, 8))
+    tk.Frame(root, bg=DIV, height=1).pack(fill='x', padx=16, pady=(10, 10))
 
-    # ── description 卡片 ─────────────────────────────────────────────────────
     if desc:
-        desc_f = tk.Frame(root, bg=CARD_BG,
-                          highlightbackground=CARD_BD, highlightthickness=1)
+        desc_f = tk.Frame(root, bg=CARD_BG, highlightbackground=CARD_BD, highlightthickness=1)
         desc_f.pack(fill='x', padx=16, pady=(0, 6))
-
-        desc_label = tk.Label(desc_f, text=f'\U0001f380  {desc}',
-                 bg=CARD_BG, fg=TEXT,
-                 font=(UI, 11, 'bold'),
-                 padx=10, pady=6,
-                 justify='left')
+        desc_label = tk.Label(desc_f, text=f'🎀  {desc}',
+                              bg=CARD_BG, fg=TEXT,
+                              font=(UI, 10, 'bold'),
+                              padx=12, pady=8, justify='left',
+                              anchor='w')
         desc_label.pack(fill='x')
 
-        def _adj_wrap():
+        def adj_desc_wrap():
             w = desc_f.winfo_width()
-            if w > 20:
-                desc_label.configure(wraplength=w - 20)
-        root.after(10, _adj_wrap)
+            if w > 28:
+                desc_label.configure(wraplength=w - 28)
 
-    # ── 命令详情框 ───────────────────────────────────────────────────────────
+        root.after(10, adj_desc_wrap)
+
     if detail:
-        code_f = tk.Frame(root, bg=CODE_BG,
-                          highlightbackground=CODE_BD, highlightthickness=1)
-        code_f.pack(fill='x', padx=16, pady=(0, 4))
-
+        code_f = tk.Frame(root, bg=CODE_BG, highlightbackground=CODE_BD, highlightthickness=1)
+        code_f.pack(fill='x', padx=16, pady=(0, 6))
         line_count = detail.count('\n') + 1
-        box_height = min(line_count, 5)
+        box_cols = _detail_cols(detail)
+        visual_lines = max(
+            line_count,
+            max((len(line) + box_cols - 1) // box_cols for line in detail.splitlines() or [''])
+        )
+        box_height = min(max(visual_lines, 1), 4)
 
-        box = tk.Text(code_f,
-                      font=(MONO, 10),
-                      fg=CODE_FG, bg=CODE_BG,
-                      wrap='char',
-                      height=box_height,
-                      bd=0, padx=10, pady=8,
-                      cursor='arrow', relief='flat',
+        box = tk.Text(code_f, font=(MONO, 10), fg=CODE_FG, bg=CODE_BG,
+                      wrap='char', height=box_height, width=box_cols, bd=0,
+                      padx=10, pady=8, cursor='arrow', relief='flat',
                       highlightthickness=0, takefocus=0)
         box.insert('1.0', detail)
         box.configure(state='disabled')
         box.pack(side='left', fill='both', expand=True)
 
-        if line_count > 5:
+        if visual_lines > 4:
             sb = tk.Scrollbar(code_f, command=box.yview, bd=0,
                               troughcolor=CODE_BG, activebackground=ACC,
                               elementborderwidth=0, highlightthickness=0)
             sb.pack(side='right', fill='y')
             box.configure(yscrollcommand=sb.set)
 
-    # ── 按钮区 ───────────────────────────────────────────────────────────────
     bf = tk.Frame(root, bg=BG)
-    bf.pack(fill='x', padx=16, pady=(6, 8))
-
-    # 空占位，保持按钮右对齐
+    bf.pack(fill='x', padx=16, pady=(6, 10))
 
     def act(allow, rem=False):
         if done['ok']:
@@ -194,44 +245,28 @@ def show(data):
             sys.stderr.write('user denied\n')
             sys.stderr.flush()
             sys.exit(2)
-        root.after(50, root.quit)
+        root.after(40, root.quit)
 
-    # 拒绝: 实心
-    tk.Button(bf, text='拒绝',
-              command=lambda: act(False),
-              bg=DEN, fg='#ffffff',
-              font=(UI, 10),
+    tk.Button(bf, text='拒绝', command=lambda: act(False),
+              bg=DEN, fg='#ffffff', font=(UI, 10),
               activebackground=DEN_HV, activeforeground='#ffffff',
-              relief='flat', padx=14, pady=6,
-              cursor='hand2', bd=0
-              ).pack(side='right', padx=(6, 0))
+              relief='flat', padx=12, pady=4, cursor='hand2', bd=0).pack(side='right', padx=(5, 0))
 
-    # 记住: 实心
-    tk.Button(bf, text='记住',
-              command=lambda: act(True, True),
-              bg=ACC, fg='#ffffff',
-              font=(UI, 10),
-              activebackground=MEM_HV, activeforeground='#ffffff',
-              relief='flat', padx=14, pady=6,
-              cursor='hand2', bd=0
-              ).pack(side='right', padx=(6, 0))
+    tk.Button(bf, text='记住', command=lambda: act(True, True),
+              bg=ACC, fg='#ffffff', font=(UI, 10),
+              activebackground=ACC_HV, activeforeground='#ffffff',
+              relief='flat', padx=12, pady=4, cursor='hand2', bd=0).pack(side='right', padx=(5, 0))
 
-    # 同意: 描边轮廓
-    btn_ok = tk.Button(bf, text='同意',
-                       command=lambda: act(True),
-                       bg=BG, fg=ACC,
-                       font=(UI, 10),
-                       activebackground=CARD_BG, activeforeground=ACC,
-                       relief='flat', padx=18, pady=6,
-                       cursor='hand2', bd=0,
-                       highlightthickness=1, highlightbackground=ACC)
+    btn_ok = tk.Button(bf, text='同意', command=lambda: act(True),
+                       bg=BG, fg=ACC, font=(UI, 10),
+                       activebackground=CARD_BG, activeforeground=ACC_HV,
+                       relief='flat', padx=16, pady=4, cursor='hand2',
+                       bd=0, highlightthickness=1, highlightbackground=ACC)
     btn_ok.pack(side='right')
 
-    # ── 快捷键 ────────────────────────────────────────────────────────────────
-    root.bind('<Return>', lambda e: act(True, True))
+    root.bind('<Return>', lambda e: act(True))
     root.protocol('WM_DELETE_WINDOW', lambda: act(False))
 
-    # ── 计算窗口尺寸 ──────────────────────────────────────────────────────────
     root.update_idletasks()
     w = root.winfo_reqwidth()
     h = root.winfo_reqheight()
@@ -239,7 +274,7 @@ def show(data):
     max_h = int(root.winfo_screenheight() * 0.65)
     _center(root, min(max(w, 460), max_w), min(h, max_h))
 
-    _focus(root, btn_ok)
+    _show_smooth(root, btn_ok)
     root.mainloop()
     try:
         root.destroy()
@@ -252,14 +287,14 @@ def main():
     try:
         raw = sys.stdin.buffer.read()
         if not raw:
-            return  # no stdin data — let Claude Code decide
-        data = json.loads(raw.decode())
+            return
+        data = json.loads(raw.decode('utf-8'))
     except Exception:
-        return  # parse error — let Claude Code decide
+        return
     try:
         show(data)
     except Exception:
-        pass  # dialog crashed — let Claude Code decide
+        pass
 
 
 if __name__ == '__main__':
